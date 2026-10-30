@@ -64,3 +64,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 constant-pool dedup, and every fault path), then every program under
 `tests/programs/` and `examples/` is assembled and run for real with golden
 stdout. CI runs the same script on every push.
+
+## Tested / not tested
+
+Tested here: 29 VM and assembler unit checks covering arithmetic, locals,
+jumps, call/ret, constant-pool dedup, and every fault path, plus
+assemble-and-run golden programs including a recursive factorial.
+
+Not tested: recursion near the 1024-frame call-stack limit under real
+programs (the overflow fault itself is tested), and hand-crafted bytecode
+(only assembler-produced programs are executed; there is no binary loader
+to attack).
