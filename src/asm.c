@@ -1,6 +1,8 @@
 #include "lumen.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,10 +97,15 @@ struct program *assemble(const char *source, char *err, int err_cap) {
         while (end > s && isspace((unsigned char)end[-1])) *--end = '\0';
         if (!*s) continue;
 
-        /* label? */
-        char *colon = strchr(s, ':');
-        if (colon && !strchr(s, ' ')) {
+        /* label? a ':' before any whitespace starts one; the rest of the
+           line may still hold an instruction ("loop: const 1") */
+        char *ws = s;
+        while (*ws && !isspace((unsigned char)*ws)) ws++;
+        char *colon = memchr(s, ':', (size_t)(ws - s));
+        if (colon) {
             *colon = '\0';
+            if (!*s) { snprintf(err, err_cap, "line %d: empty label", line); goto fail; }
+            if (strlen(s) >= 64) { snprintf(err, err_cap, "line %d: label name too long", line); goto fail; }
             if (nlabels >= 512) { snprintf(err, err_cap, "too many labels"); goto fail; }
             for (int i = 0; i < nlabels; i++)
                 if (strcmp(labels[i].name, s) == 0) {
@@ -108,7 +115,9 @@ struct program *assemble(const char *source, char *err, int err_cap) {
             snprintf(labels[nlabels].name, 64, "%s", s);
             labels[nlabels].addr = p->code_len;
             nlabels++;
-            continue;
+            s = colon + 1;
+            while (isspace((unsigned char)*s)) s++;
+            if (!*s) continue;   /* label alone on the line */
         }
 
         /* instruction */
@@ -135,11 +144,32 @@ struct program *assemble(const char *source, char *err, int err_cap) {
             s += j;
             while (isspace((unsigned char)*s)) s++;
             if (isdigit((unsigned char)operand[0]) || (operand[0] == '-' && isdigit((unsigned char)operand[1]))) {
-                int32_t v = (int32_t)strtol(operand, NULL, 10);
-                if (op == OP_CONST && a == 0) v = add_constant(p, v);  /* literal -> pool index */
-                emit32(p, v);
+                errno = 0;
+                char *endp = NULL;
+                long long v = strtoll(operand, &endp, 10);
+                if (errno == ERANGE) {
+                    snprintf(err, err_cap, "line %d: number '%s' is out of range", line, operand);
+                    goto fail;
+                }
+                if (!endp || *endp != '\0') {
+                    snprintf(err, err_cap, "line %d: malformed number '%s'", line, operand);
+                    goto fail;
+                }
+                if (op == OP_CONST && a == 0) {
+                    emit32(p, add_constant(p, (int64_t)v));  /* literal -> pool index */
+                } else {
+                    if (v < INT32_MIN || v > INT32_MAX) {
+                        snprintf(err, err_cap, "line %d: operand '%s' is out of range", line, operand);
+                        goto fail;
+                    }
+                    emit32(p, (int32_t)v);
+                }
             } else {
                 /* symbolic operand: label fixup */
+                if (strlen(operand) >= 64) {
+                    snprintf(err, err_cap, "line %d: label name too long", line);
+                    goto fail;
+                }
                 if (nfixups >= 1024) { snprintf(err, err_cap, "too many fixups"); goto fail; }
                 fixups[nfixups].at = p->code_len;
                 snprintf(fixups[nfixups].name, 64, "%s", operand);
@@ -174,4 +204,91 @@ void program_free(struct program *p) {
     free(p->code);
     free(p->constants);
     free(p);
+}
+
+/* ---- binary save/load ----
+   Format: "LMB1", u64 code_len, u64 nconstants, code bytes,
+   then nconstants little-endian int64 values. */
+
+static int write_u64(FILE *f, uint64_t v) {
+    uint8_t b[8];
+    for (int i = 0; i < 8; i++) b[i] = (uint8_t)(v >> (8 * i));
+    return fwrite(b, 1, 8, f) == 8 ? 0 : -1;
+}
+
+static int read_u64(FILE *f, uint64_t *out) {
+    uint8_t b[8];
+    if (fread(b, 1, 8, f) != 8) return -1;
+    *out = 0;
+    for (int i = 0; i < 8; i++) *out |= (uint64_t)b[i] << (8 * i);
+    return 0;
+}
+
+int program_save(const struct program *p, const char *path) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    int rc = -1;
+    if (fwrite("LMB1", 1, 4, f) != 4) goto done;
+    if (write_u64(f, (uint64_t)p->code_len)) goto done;
+    if (write_u64(f, (uint64_t)p->nconstants)) goto done;
+    if (p->code_len && fwrite(p->code, 1, (size_t)p->code_len, f) != (size_t)p->code_len) goto done;
+    for (long i = 0; i < p->nconstants; i++)
+        if (write_u64(f, (uint64_t)p->constants[i])) goto done;
+    rc = 0;
+done:
+    fclose(f);
+    return rc;
+}
+
+struct program *program_load(const char *path, char *err, int err_cap) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { snprintf(err, err_cap, "cannot read %s", path); return NULL; }
+    struct program *p = NULL;
+    char magic[4];
+    uint64_t code_len, nconstants;
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "LMB1", 4) != 0) {
+        snprintf(err, err_cap, "%s is not a lumen binary", path);
+        goto fail;
+    }
+    if (read_u64(f, &code_len) || read_u64(f, &nconstants) ||
+        code_len > (1u << 24) || nconstants > (1u << 20)) {
+        snprintf(err, err_cap, "%s is truncated or corrupt", path);
+        goto fail;
+    }
+    p = calloc(1, sizeof *p);
+    if (!p) { perror("calloc"); exit(1); }
+    p->code_len = (long)code_len;
+    p->code_cap = (long)code_len;
+    p->nconstants = (long)nconstants;
+    p->constants_cap = (long)nconstants;
+    p->code = malloc(code_len ? code_len : 1);
+    p->constants = malloc((nconstants ? nconstants : 1) * sizeof *p->constants);
+    if (!p->code || !p->constants) { perror("malloc"); exit(1); }
+    if (code_len && fread(p->code, 1, code_len, f) != code_len) {
+        snprintf(err, err_cap, "%s is truncated or corrupt", path);
+        goto fail;
+    }
+    for (uint64_t i = 0; i < nconstants; i++) {
+        uint64_t v;
+        if (read_u64(f, &v)) {
+            snprintf(err, err_cap, "%s is truncated or corrupt", path);
+            goto fail;
+        }
+        p->constants[i] = (int64_t)v;
+    }
+    fclose(f);
+    return p;
+fail:
+    fclose(f);
+    program_free(p);
+    return NULL;
+}
+
+int program_is_binary(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    char magic[4] = {0};
+    size_t n = fread(magic, 1, 4, f);
+    fclose(f);
+    return n == 4 && memcmp(magic, "LMB1", 4) == 0;
 }

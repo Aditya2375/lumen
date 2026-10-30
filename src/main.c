@@ -8,10 +8,11 @@ static void usage(FILE *f) {
     fprintf(f,
         "lumen - a bytecode virtual machine\n"
         "\n"
-        "usage: lumen <program.lm> [--disassemble]\n"
+        "usage: lumen <program.lm|program.lmb> [--disassemble] [--save out.lmb]\n"
         "\n"
-        "Assembles the program and executes it. --disassemble prints the\n"
-        "bytecode with resolved addresses instead of running it.\n");
+        "Assembles the program and executes it; a .lmb binary is loaded and\n"
+        "run directly. --save writes the binary form instead of running, and\n"
+        "--disassemble prints the bytecode with resolved addresses.\n");
 }
 
 static char *read_file(const char *path) {
@@ -51,22 +52,39 @@ static void disassemble(const struct program *p) {
 }
 
 int main(int argc, char **argv) {
-    const char *input = NULL;
+    const char *input = NULL, *save = NULL;
     int dis = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--disassemble") == 0) dis = 1;
+        else if (strcmp(argv[i], "--save") == 0 && i + 1 < argc) save = argv[++i];
         else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) { usage(stdout); return 0; }
         else if (!input) input = argv[i];
         else { usage(stderr); return 2; }
     }
     if (!input) { usage(stderr); return 2; }
 
-    char *src = read_file(input);
-    if (!src) { fprintf(stderr, "lumen: cannot read %s\n", input); return 1; }
-
     char err[256];
-    struct program *prog = assemble(src, err, sizeof err);
-    if (!prog) { fprintf(stderr, "lumen: %s: %s\n", input, err); return 1; }
+    struct program *prog;
+    if (program_is_binary(input)) {
+        prog = program_load(input, err, sizeof err);
+        if (!prog) { fprintf(stderr, "lumen: %s\n", err); return 1; }
+    } else {
+        char *src = read_file(input);
+        if (!src) { fprintf(stderr, "lumen: cannot read %s\n", input); return 1; }
+        prog = assemble(src, err, sizeof err);
+        if (!prog) { fprintf(stderr, "lumen: %s: %s\n", input, err); free(src); return 1; }
+        free(src);
+    }
+
+    if (save) {
+        if (program_save(prog, save) != 0) {
+            fprintf(stderr, "lumen: cannot write %s\n", save);
+            program_free(prog);
+            return 1;
+        }
+        program_free(prog);
+        return 0;
+    }
 
     if (dis) {
         disassemble(prog);

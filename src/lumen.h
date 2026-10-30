@@ -46,6 +46,11 @@ struct vm {
 struct program *assemble(const char *source, char *err, int err_cap);
 void program_free(struct program *p);
 
+/* binary form: save/load an assembled program ("LMB1" container) */
+int program_save(const struct program *p, const char *path);
+struct program *program_load(const char *path, char *err, int err_cap);
+int program_is_binary(const char *path);
+
 /* execute. Returns 0 on HALT, -1 on a runtime fault (vm->err filled). */
 int vm_run(struct vm *vm, const struct program *prog);
 
