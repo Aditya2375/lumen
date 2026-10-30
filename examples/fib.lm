@@ -1,0 +1,29 @@
+# fib(0..9), iterative
+    const 0
+    store 0        # a
+    const 1
+    store 1        # b
+    const 0
+    store 2        # i
+loop:
+    load 2
+    const 10
+    ge
+    jump_if done
+    load 0
+    print
+    load 0
+    load 1
+    add
+    store 3        # t = a + b
+    load 1
+    store 0        # a = b
+    load 3
+    store 1        # b = t
+    load 2
+    const 1
+    add
+    store 2
+    jump loop
+done:
+    halt

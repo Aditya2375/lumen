@@ -1,0 +1,36 @@
+# collatz steps from 27 (answer: 111), iterative with a loop
+    const 27
+    store 0        # n
+    const 0
+    store 1        # steps
+loop:
+    load 0
+    const 1
+    eq
+    jump_if done
+    load 0
+    const 2
+    mod
+    jump_if odd
+    load 0
+    const 2
+    div
+    store 0
+    jump next
+odd:
+    load 0
+    const 3
+    mul
+    const 1
+    add
+    store 0
+next:
+    load 1
+    const 1
+    add
+    store 1
+    jump loop
+done:
+    load 1
+    print
+    halt

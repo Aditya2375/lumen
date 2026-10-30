@@ -1,0 +1,21 @@
+# factorial via a recursive function
+# fn fact(n): n < 2 ? 1 : n * fact(n - 1)
+    const 10
+    call fact 1
+    print
+    halt
+fact:
+    load 0
+    const 2
+    lt
+    jump_if_not recurse
+    const 1
+    ret
+recurse:
+    load 0
+    load 0
+    const 1
+    sub
+    call fact 1
+    mul
+    ret
