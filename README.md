@@ -21,14 +21,24 @@ make
 
 ## The instruction set
 
-All values are signed 64-bit integers. Operands are 32-bit immediates.
+All values are signed 64-bit integers. `const` takes any 64-bit literal;
+jump targets and slot indices are 32-bit immediates.
+
+### Arithmetic semantics
+
+`add`, `sub`, `mul`, and `neg` wrap with two's-complement machine
+semantics - defined behavior, never C's signed-overflow undefinedness.
+`div` and `mod` fault cleanly on the two hardware traps: division by zero
+and `INT64_MIN / -1`. Every fault names itself and the instruction pointer;
+no input can crash the machine.
 
 | Instruction | Effect |
 |---|---|
 | `const N` | push constant N (deduped in the constant pool) |
 | `load i` / `store i` | read / write local slot i of the current frame |
 | `pop` | discard the top of stack |
-| `add sub mul div mod neg` | arithmetic; division by zero is a fault |
+| `add sub mul neg` | wrapping two's-complement arithmetic |
+| `div mod` | division; zero divisor or `INT64_MIN / -1` is a fault |
 | `eq ne lt le gt ge` | comparisons, push 1 or 0 |
 | `jump label` | unconditional jump |
 | `jump_if label` / `jump_if_not label` | pop; jump when nonzero / zero |
@@ -38,6 +48,14 @@ All values are signed 64-bit integers. Operands are 32-bit immediates.
 | `halt` | stop |
 
 Labels end in `:` and are resolved by the assembler; `#` starts a comment.
+A label may share its line with an instruction (`loop: const 1`).
+
+## Binary programs
+
+`lumen program.lm --save program.lmb` writes the assembled form in a small
+`LMB1` container (code plus constant pool). Running or disassembling a
+`.lmb` loads it directly - the disassembly of a loaded binary is identical
+to the disassembly of its source, which the test suite round-trips.
 
 ## The execution model
 
@@ -67,11 +85,14 @@ stdout. CI runs the same script on every push.
 
 ## Tested / not tested
 
-Tested here: 29 VM and assembler unit checks covering arithmetic, locals,
-jumps, call/ret, constant-pool dedup, and every fault path, plus
-assemble-and-run golden programs including a recursive factorial.
+Tested here: 56 VM and assembler unit checks covering arithmetic
+(including wrap-around edges), locals, jumps, call/ret, constant-pool
+dedup, 64-bit constants, malformed numbers, same-line labels, every fault
+path (stack overflow, underflow, bad opcode, bad constant index, truncated
+instruction, wild jump, division traps), and binary save/load round-trips;
+plus assemble-and-run golden programs including a recursive factorial.
 
 Not tested: recursion near the 1024-frame call-stack limit under real
-programs (the overflow fault itself is tested), and hand-crafted bytecode
-(only assembler-produced programs are executed; there is no binary loader
-to attack).
+programs (the overflow fault itself is exercised), and adversarial binary
+files beyond truncation/corruption checks (size caps and magic validation
+only).

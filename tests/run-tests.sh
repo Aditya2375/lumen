@@ -28,4 +28,17 @@ for src in tests/programs/*.lm examples/*.lm; do
         echo "PASS $name (runs)"
     fi
 done
+# binary save/load round-trip through the CLI
+./build/lumen tests/programs/collatz.lm --save "$OUT/collatz.lmb"
+dis_src=$(./build/lumen tests/programs/collatz.lm --disassemble)
+dis_bin=$(./build/lumen "$OUT/collatz.lmb" --disassemble)
+if [ "$dis_src" != "$dis_bin" ]; then
+    echo "FAIL round-trip: disassembly differs after save/load" >&2
+    exit 1
+fi
+got=$(./build/lumen "$OUT/collatz.lmb")
+want=$(cat tests/programs/collatz.expected)
+[ "$got" = "$want" ] || { echo "FAIL round-trip: binary run differs" >&2; exit 1; }
+echo "PASS binary round-trip"
+
 echo "ALL TESTS PASSED"
