@@ -78,21 +78,26 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ./tests/run-tests.sh
 ```
 
-29 VM and assembler unit checks (arithmetic, locals, jumps, call/ret,
+58 VM and assembler unit checks (arithmetic, locals, jumps, call/ret,
 constant-pool dedup, and every fault path), then every program under
 `tests/programs/` and `examples/` is assembled and run for real with golden
-stdout. CI runs the same script on every push.
+stdout. CI runs the same script on every push, plus a docs job that fails
+when a count quoted here drifts from the real suite.
 
 ## Tested / not tested
 
-Tested here: 56 VM and assembler unit checks covering arithmetic
+Tested here: 58 VM and assembler unit checks covering arithmetic
 (including wrap-around edges), locals, jumps, call/ret, constant-pool
 dedup, 64-bit constants, malformed numbers, same-line labels, every fault
 path (stack overflow, underflow, bad opcode, bad constant index, truncated
 instruction, wild jump, division traps), and binary save/load round-trips;
 plus assemble-and-run golden programs including a recursive factorial.
+Recursion is exercised at depth 1000 (runs) and 1030 (clean "call stack
+overflow" fault at the 1024-frame limit). Adversarial binaries - a
+constant index past the pool, a truncated trailing instruction, a byte
+that is no opcode - are disassembled with the corruption spelled out
+instead of a crash, and the assembler rejects label operands where a
+number belongs (const/load/store/argc). The suite runs ASan/UBSan-clean.
 
-Not tested: recursion near the 1024-frame call-stack limit under real
-programs (the overflow fault itself is exercised), and adversarial binary
-files beyond truncation/corruption checks (size caps and magic validation
-only).
+Not tested: binaries with a valid header but nonsense pool values beyond
+what the disassembler checks above, and timing/throughput benchmarks.
