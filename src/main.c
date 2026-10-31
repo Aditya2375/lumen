@@ -30,6 +30,7 @@ static char *read_file(const char *path) {
 }
 
 static void disassemble(const struct program *p) {
+    /* the binary may be corrupt: never read past the code or the pool */
     long ip = 0;
     while (ip < p->code_len) {
         long at = ip;
@@ -37,15 +38,23 @@ static void disassemble(const struct program *p) {
         printf("%04ld  %-12s", at, op < OP_COUNT ? opcode_names[op] : "???");
         int ops = op < OP_COUNT ? opcode_operands[op] : 0;
         for (int i = 0; i < ops; i++) {
+            if (ip + 4 > p->code_len) {
+                printf(" ; truncated operand");
+                return;
+            }
             int32_t v = (int32_t)((uint32_t)p->code[ip] |
                                   ((uint32_t)p->code[ip + 1] << 8) |
                                   ((uint32_t)p->code[ip + 2] << 16) |
                                   ((uint32_t)p->code[ip + 3] << 24));
             ip += 4;
-            if (op == OP_CONST && i == 0)
-                printf(" %d  ; %ld", v, (long)p->constants[v]);
-            else
+            if (op == OP_CONST && i == 0) {
+                if (v >= 0 && v < p->nconstants)
+                    printf(" %d  ; %ld", v, (long)p->constants[v]);
+                else
+                    printf(" %d  ; <constant index out of range>", v);
+            } else {
                 printf(" %d", v);
+            }
         }
         printf("\n");
     }
