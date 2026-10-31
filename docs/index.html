@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lumen - bytecode VM, live in your browser</title>
+<style>
+  :root { --bg: #0d1117; --panel: #161b22; --edge: #30363d; --fg: #7ee787; --dim: #8b949e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 .star { color: var(--dim); font-weight: normal; }
+  p.sub { color: var(--dim); margin: 0 0 20px; }
+  a { color: #58a6ff; }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; margin-bottom: 16px; }
+  .panel header { padding: 8px 12px; border-bottom: 1px solid var(--edge); color: var(--dim); font-size: 12px; }
+  textarea { width: 100%; min-height: 260px; background: transparent; color: var(--fg); border: 0;
+             padding: 12px; font: inherit; resize: vertical; outline: none; display: block; }
+  #out { padding: 12px; white-space: pre-wrap; min-height: 80px; }
+  #out .err { color: #ff7b72; }
+  .row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  button, select { background: #21262d; color: var(--fg); border: 1px solid var(--edge);
+             border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--fg); }
+  button:disabled { opacity: .5; cursor: wait; }
+</style>
+</head>
+<body>
+<main>
+  <h1>lumen <span class="star">- a bytecode virtual machine</span></h1>
+  <p class="sub">The real VM (vm.c + asm.c) compiled to WebAssembly, running in this page.
+     <a href="https://github.com/Aditya2375/lumen">Source on GitHub</a>.</p>
+
+  <div class="row">
+    <select id="example"></select>
+    <button id="run" disabled>loading vm...</button>
+  </div>
+
+  <div class="panel">
+    <header>program.lm - edit me</header>
+    <textarea id="src" spellcheck="false"></textarea>
+  </div>
+
+  <div class="panel">
+    <header>output</header>
+    <div id="out"></div>
+  </div>
+</main>
+
+<script src="lumen.js"></script>
+<script>
+const EXAMPLES = {
+  "fib": `jump main
+# fib(n): the nth fibonacci number, computed by a recursive function.
+# locals 0 = n
+fib:
+load 0
+const 2
+lt
+jump_if_not fib_rec
+load 0
+ret
+fib_rec:
+load 0
+const 1
+sub
+call fib 1
+load 0
+const 2
+sub
+call fib 1
+add
+ret
+main:
+const 10
+call fib 1
+print
+halt
+`,
+  "countdown": `const 5
+loop:
+print
+const 1
+sub
+store 0
+load 0
+const 0
+ge
+jump_if loop
+halt
+`,
+  "fault": `const 10
+const 0
+div
+halt
+`,
+};
+const sel = document.getElementById("example");
+for (const k of Object.keys(EXAMPLES)) {
+  const o = document.createElement("option");
+  o.value = o.textContent = k;
+  sel.appendChild(o);
+}
+const src = document.getElementById("src");
+const out = document.getElementById("out");
+const runBtn = document.getElementById("run");
+sel.onchange = () => { src.value = EXAMPLES[sel.value]; };
+src.value = EXAMPLES[sel.value];
+
+let mod = null;
+LumenModule({
+  print: (t) => { const d = document.createElement("div"); d.textContent = t; out.appendChild(d); },
+  printErr: (t) => { const d = document.createElement("div"); d.className = "err"; d.textContent = t; out.appendChild(d); },
+}).then((m) => { mod = m; runBtn.disabled = false; runBtn.textContent = "run"; });
+
+runBtn.onclick = () => {
+  out.innerHTML = "";
+  const err = mod.ccall("lumen_run", "string", ["string"], [src.value]);
+  if (err) {
+    const d = document.createElement("div");
+    d.className = "err";
+    d.textContent = "lumen: " + err;
+    out.appendChild(d);
+  }
+};
+</script>
+</body>
+</html>

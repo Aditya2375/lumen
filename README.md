@@ -1,5 +1,7 @@
 # lumen
 
+**[Run it live in your browser](https://aditya2375.github.io/lumen/)** - the real VM compiled to WebAssembly, no install.
+
 A bytecode virtual machine with its own assembler. lumen assembles a small
 text instruction set into compact bytecode and executes it on a stack
 machine with call frames, locals, jumps, and checked faults - every bad
