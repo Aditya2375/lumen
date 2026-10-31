@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 OUT=build/tests
 mkdir -p "$OUT"
 
-cc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Isrc \
+cc -std=gnu11 -O2 -g -Wall -Wextra -Werror -Isrc $EXTRA \
     tests/unit/test_vm.c src/vm.c src/asm.c -o "$OUT/test_vm"
 "$OUT/test_vm"
 
@@ -28,6 +28,15 @@ for src in tests/programs/*.lm examples/*.lm; do
         echo "PASS $name (runs)"
     fi
 done
+# an empty or comment-only program is a clean diagnostic, not a VM fault
+printf '# nothing here\n' > "$OUT/empty.lm"
+if ./build/lumen "$OUT/empty.lm" 2> "$OUT/empty.err"; then
+    echo "FAIL empty program: expected a non-zero exit" >&2
+    exit 1
+fi
+grep -q "no instructions" "$OUT/empty.err" || { echo "FAIL empty program: wrong diagnostic" >&2; exit 1; }
+echo "PASS empty program diagnostic"
+
 # binary save/load round-trip through the CLI
 ./build/lumen tests/programs/collatz.lm --save "$OUT/collatz.lmb"
 dis_src=$(./build/lumen tests/programs/collatz.lm --disassemble)

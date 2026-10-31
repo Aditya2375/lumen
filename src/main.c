@@ -101,6 +101,12 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    if (prog->code_len == 0) {
+        fprintf(stderr, "lumen: %s: program has no instructions\n", input);
+        program_free(prog);
+        return 1;
+    }
+
     struct vm vm;
     if (vm_run(&vm, prog) != 0) {
         fprintf(stderr, "lumen: %s\n", vm.err);
