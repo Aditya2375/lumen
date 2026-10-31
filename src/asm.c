@@ -165,7 +165,17 @@ struct program *assemble(const char *source, char *err, int err_cap) {
                     emit32(p, (int32_t)v);
                 }
             } else {
-                /* symbolic operand: label fixup */
+                /* a label names a code address: only jumps and the call
+                   target may take one - a local slot, a constant pool
+                   index, or an argument count must be a number */
+                int address_operand =
+                    op == OP_JUMP || op == OP_JUMP_IF || op == OP_JUMP_IF_NOT ||
+                    (op == OP_CALL && a == 0);
+                if (!address_operand) {
+                    snprintf(err, err_cap, "line %d: '%s' needs a numeric operand, got '%s'",
+                             line, mnem, operand);
+                    goto fail;
+                }
                 if (strlen(operand) >= 64) {
                     snprintf(err, err_cap, "line %d: label name too long", line);
                     goto fail;
