@@ -37,7 +37,7 @@ struct vm {
     int64_t stack[4096];
     long sp;                /* next free slot */
     long fp;                /* frame pointer: locals are stack[fp + idx] */
-    long call_stack[1024];  /* pairs: return ip, caller fp */
+    long call_stack[2048];  /* pairs: return ip, caller fp = 1024 frames */
     long csp;
     char err[256];
 };

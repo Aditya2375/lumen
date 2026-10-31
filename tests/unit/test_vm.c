@@ -99,6 +99,9 @@ int main(void) {
     CHECK(run(&vm, "const -9223372036854775808\nneg\nhalt", err) == 0, "neg of INT64_MIN defined");
     CHECK(vm.stack[0] == INT64_MIN, "neg INT64_MIN wraps to itself");
 
+    /* label and instruction share a line */
+    CHECK(run(&vm, "top: const 4\nhalt", err) == 0 && vm.stack[0] == 4, "same-line label works");
+
     /* malformed numbers rejected */
     CHECK(run(&vm, "const 12abc\nhalt", err) == -2, "trailing junk in number rejected");
     CHECK(strstr(err, "malformed number") != NULL, "malformed says why");
@@ -151,7 +154,7 @@ int main(void) {
 
     /* binary save/load round-trips */
     {
-        struct program *p = assemble("const 11\nconst 31\nmul\nprint\nhalt", err, 256);
+        struct program *p = assemble("const 11\nconst 31\nmul\nhalt", err, 256);
         CHECK(p != NULL, "round-trip source assembles");
         if (p) {
             CHECK(program_save(p, "/tmp/lumen-roundtrip.lmb") == 0, "save works");
@@ -163,6 +166,7 @@ int main(void) {
                       "code survives the round-trip");
                 CHECK(q->nconstants == p->nconstants, "pool survives the round-trip");
                 CHECK(vm_run(&vm, q) == 0, "loaded program runs");
+                CHECK(vm.sp == 1 && vm.stack[0] == 341, "loaded program computes 11*31");
                 program_free(q);
             }
             program_free(p);
