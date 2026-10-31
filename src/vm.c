@@ -1,5 +1,6 @@
 #include "lumen.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -169,7 +170,7 @@ int vm_run(struct vm *vm, const struct program *prog) {
         case OP_PRINT: {
             int64_t v;
             if (pop(vm, &v)) return -1;
-            printf("%ld\n", (long)v);
+            printf("%" PRId64 "\n", v);   /* not %ld: long is 32-bit on wasm32 */
             break;
         }
         case OP_HALT:
